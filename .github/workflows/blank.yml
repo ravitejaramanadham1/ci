@@ -1,24 +1,24 @@
+---
 name: CI
-# Controls when the workflow will run
-on:
-# Triggers the workflow on push or pull request events but only for the "main" branch
-push:
-branches: [ "main" ]
+on: null
+push: null
+branches:
+  - main
 pull_request:
-branches: [ "main" ]
-workflow_dispatch:
-permissions:
+  branches:
+    - main
+workflow_dispatch: null
+permissions: null
 id-token: write
 contents: read
-build:
+build: null
 runs-on: ubuntu-latest
 steps:
-# Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-- uses: actions/checkout@v3
-- name: Retrieve secret from Vault
+  - uses: actions/checkout@v3
+  - name: Retrieve secret from Vault
 id: secretdata
 uses: hashicorp/vault-action@v2.4.0
-with:
+with: null
 method: jwt
 url: https://127.0.0.1:8200
 role: mygithubproject-productionrole2
