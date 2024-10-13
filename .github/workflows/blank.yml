@@ -28,22 +28,26 @@ jobs:
         id: oidc-token
         run: echo "OIDC_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
 
-      # Step 4: Log in to Vault using JWT and a custom auth path
+      # Step 4: Log in to Vault using a custom JWT Auth Path
       - name: Vault Login using custom JWT Auth Path
         env:
-          VAULT_ADDR: https://127.0.0.1:8200
+          VAULT_ADDR: https://xxxyyy.net:8200
           VAULT_NAMESPACE: root
-          GITHUB_OIDC_TOKEN: ${{ steps.oidc-token.outputs.oidc-token }}
+          GITHUB_OIDC_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          vault login -method=mycustom_github_jwt_engine \
-            role=mygithubproject-productionrole2 \
-            jwt=$GITHUB_OIDC_TOKEN
+          # Use the Vault API to log in with the custom auth path
+          LOGIN_RESPONSE=$(curl --request POST --data "{\"role\": \"mygithubproject-productionrole2\", \"jwt\": \"$GITHUB_OIDC_TOKEN\"}" \
+            ${VAULT_ADDR}/v1/auth/mycustom_github_jwt_engine/login)
+          VAULT_TOKEN=$(echo $LOGIN_RESPONSE | jq -r .auth.client_token)
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
 
       # Step 5: Retrieve secrets from Vault
       - name: Retrieve secret from Vault
-        id: secretdata
+        env:
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
         run: |
-          VAULT_SECRET=$(vault kv get -field=secretvalue kv/data/secrets/mygithubproject/secret1)
+          VAULT_SECRET=$(curl --header "X-Vault-Token: $VAULT_TOKEN" \
+            ${VAULT_ADDR}/v1/kv/data/secrets/mygithubproject/secret1 | jq -r .data.data.secretvalue)
           echo "MY_SECRET=$VAULT_SECRET" >> $GITHUB_ENV
 
       # Step 6: Use secret from Vault
