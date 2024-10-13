@@ -31,7 +31,7 @@ jobs:
       # Step 4: Log in to Vault using a custom JWT Auth Path
       - name: Vault Login using custom JWT Auth Path
         env:
-          VAULT_ADDR: https://xxxyyy.net:8200
+          VAULT_ADDR: https://127.0.0.1:8200
           VAULT_NAMESPACE: root
           GITHUB_OIDC_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
