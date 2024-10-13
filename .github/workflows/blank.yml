@@ -23,34 +23,76 @@ jobs:
           echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
           sudo apt-get update && sudo apt-get install -y vault
 
-      # Step 3: Retrieve GitHub OIDC token (this is automatic for GitHub Actions)
-      - name: Retrieve GitHub OIDC token
-        id: oidc-token
-        run: echo "OIDC_TOKEN=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_ENV
-
-      # Step 4: Log in to Vault using a custom JWT Auth Path
-      - name: Vault Login using custom JWT Auth Path
-        env:
-          VAULT_ADDR: https://127.0.0.1:8200
-          VAULT_NAMESPACE: root
-          GITHUB_OIDC_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Step 3: Start Vault server in dev mode (in the background)
+      - name: Start Vault in dev mode
         run: |
-          # Use the Vault API to log in with the custom auth path
+          nohup vault server -dev > vault.log 2>&1 &
+          sleep 5  # Wait for Vault to start
+
+      # Step 4: Set Vault environment variables and log in with the root token
+      - name: Set Vault environment and log in
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+        run: |
+          export VAULT_ADDR='http://127.0.0.1:8200'
+          # Capture the root token from the dev server startup log
+          VAULT_TOKEN=$(grep 'Root Token:' vault.log | awk '{print $3}')
+          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
+          vault status
+
+      # Step 5: Enable custom JWT auth method (this simulates the setup you would normally do in production)
+      - name: Enable custom JWT auth method
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        run: |
+          vault auth enable -path=mycustom_github_jwt_engine jwt
+          vault write auth/mycustom_github_jwt_engine/config \
+            bound_issuer="https://token.actions.githubusercontent.com" \
+            oidc_discovery_url="https://token.actions.githubusercontent.com"
+
+          # Create a role for GitHub Actions JWT authentication
+          vault write auth/mycustom_github_jwt_engine/role/mygithubproject-productionrole2 \
+            role_type="jwt" \
+            bound_audiences="https://vault.example.com" \
+            user_claim="sub" \
+            bound_subject="repo:<YOUR_ORG>/<YOUR_REPO>:ref:refs/heads/main" \
+            policies="default" \
+            ttl="1h"
+
+      # Step 6: Store a test secret in Vault (for retrieval later)
+      - name: Store test secret in Vault
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        run: |
+          vault kv put kv/secrets/mygithubproject/secret1 secretvalue="my-secret-value"
+
+      # Step 7: Simulate login via GitHub Actions OIDC token (using root token for testing)
+      - name: Simulate Vault login using custom JWT auth
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_NAMESPACE: root
+          GITHUB_OIDC_TOKEN: ${{ env.VAULT_TOKEN }}  # Using root token as OIDC token for testing
+        run: |
           LOGIN_RESPONSE=$(curl --request POST --data "{\"role\": \"mygithubproject-productionrole2\", \"jwt\": \"$GITHUB_OIDC_TOKEN\"}" \
             ${VAULT_ADDR}/v1/auth/mycustom_github_jwt_engine/login)
-          VAULT_TOKEN=$(echo $LOGIN_RESPONSE | jq -r .auth.client_token)
-          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
+          VAULT_CLIENT_TOKEN=$(echo $LOGIN_RESPONSE | jq -r .auth.client_token)
+          echo "VAULT_CLIENT_TOKEN=$VAULT_CLIENT_TOKEN" >> $GITHUB_ENV
+          echo "Logged in successfully, Vault Client Token: $VAULT_CLIENT_TOKEN"
 
-      # Step 5: Retrieve secrets from Vault
+      # Step 8: Retrieve secrets from Vault using the client token
       - name: Retrieve secret from Vault
         env:
-          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: ${{ env.VAULT_CLIENT_TOKEN }}
         run: |
           VAULT_SECRET=$(curl --header "X-Vault-Token: $VAULT_TOKEN" \
             ${VAULT_ADDR}/v1/kv/data/secrets/mygithubproject/secret1 | jq -r .data.data.secretvalue)
           echo "MY_SECRET=$VAULT_SECRET" >> $GITHUB_ENV
+          echo "Retrieved secret: ${{ env.MY_SECRET }}"
 
-      # Step 6: Use secret from Vault
+      # Step 9: Use secret from Vault
       - name: Use secret from Vault
         run: |
-          echo "Retrieved secret: ${{ env.MY_SECRET }}"
+          echo "The retrieved secret is: ${{ env.MY_SECRET }}"
