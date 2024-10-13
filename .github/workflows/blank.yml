@@ -40,7 +40,15 @@ jobs:
           echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
           vault status
 
-      # Step 5: Create a policy to allow access to the secret
+      # Step 5: Mount the KV secrets engine at the "kv" path (if not already mounted)
+      - name: Mount KV secrets engine
+        env:
+          VAULT_ADDR: http://127.0.0.1:8200
+          VAULT_TOKEN: ${{ env.VAULT_TOKEN }}
+        run: |
+          vault secrets enable -path=kv kv
+
+      # Step 6: Create a policy to allow access to the secret
       - name: Create policy for secret access
         env:
           VAULT_ADDR: http://127.0.0.1:8200
@@ -52,7 +60,7 @@ jobs:
           }
           EOF
 
-      # Step 6: Enable custom JWT auth method and attach the policy
+      # Step 7: Enable custom JWT auth method and attach the policy
       - name: Enable custom JWT auth method
         env:
           VAULT_ADDR: http://127.0.0.1:8200
@@ -72,7 +80,7 @@ jobs:
             policies="my-secret-policy" \
             ttl="1h"
 
-      # Step 7: Store a test secret in Vault (for retrieval later)
+      # Step 8: Store a test secret in Vault (for retrieval later)
       - name: Store test secret in Vault
         env:
           VAULT_ADDR: http://127.0.0.1:8200
@@ -80,7 +88,7 @@ jobs:
         run: |
           vault kv put kv/secrets/mygithubproject/secret1 secretvalue="my-secret-value"
 
-      # Step 8: Simulate login via GitHub Actions OIDC token (using root token for testing)
+      # Step 9: Simulate login via GitHub Actions OIDC token (using root token for testing)
       - name: Simulate Vault login using custom JWT auth
         env:
           VAULT_ADDR: http://127.0.0.1:8200
@@ -93,7 +101,7 @@ jobs:
           echo "VAULT_CLIENT_TOKEN=$VAULT_CLIENT_TOKEN" >> $GITHUB_ENV
           echo "Logged in successfully, Vault Client Token: $VAULT_CLIENT_TOKEN"
 
-      # Step 9: Retrieve secrets from Vault using the client token
+      # Step 10: Retrieve secrets from Vault using the client token
       - name: Retrieve secret from Vault
         env:
           VAULT_ADDR: http://127.0.0.1:8200
@@ -104,7 +112,7 @@ jobs:
           echo "MY_SECRET=$VAULT_SECRET" >> $GITHUB_ENV
           echo "Retrieved secret: ${{ env.MY_SECRET }}"
 
-      # Step 10: Use secret from Vault
+      # Step 11: Use secret from Vault
       - name: Use secret from Vault
         run: |
           echo "The retrieved secret is: ${{ env.MY_SECRET }}"
